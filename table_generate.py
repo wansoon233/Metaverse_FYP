@@ -19,7 +19,7 @@ os.makedirs(PLOT_DIR, exist_ok=True)
 MODEL_PATHS = {
     "DQN": "models/DQN/saved_models/dqn_smart_final",
     "PPO": "models/PPO/saved_models/ppo_final_fixed",
-    "Hybrid": "models/PPO/saved_models/ppo_lstm_fast" 
+    "Hybrid":"models/Hybrid/saved_models/ppo_lstm_fast" 
 }
 
 FILE_MAP = {
