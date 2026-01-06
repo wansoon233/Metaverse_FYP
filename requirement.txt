@@ -1,0 +1,16 @@
+# Core AI & Simulation
+gymnasium
+sinergym
+stable-baselines3
+sb3-contrib
+shimmy>=0.2.1
+
+# Data Analysis
+numpy
+pandas
+scipy
+tabulate
+
+# Visualization
+matplotlib
+seaborn

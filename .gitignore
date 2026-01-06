@@ -1,0 +1,16 @@
+# Ignore Virtual Environment
+venv/
+env/
+.env
+
+# Ignore Python Cache
+__pycache__/
+*.pyc
+
+# Ignore IDE settings
+.vscode/
+.idea/
+
+# Ignore heavy dataset folders if you don't want them online
+# (Optional: remove the # below if you want to keep models local only)
+# models/
