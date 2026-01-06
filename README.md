@@ -35,6 +35,7 @@ The core innovation is a **Hybrid LSTM-PPO-PID agent**, a multi-hierarchical con
 ├── table_generate.py     # Main script for generating Table 4.1 & Graphs
 ├── train_hybrid.py       # Script to train the Hybrid agent
 └── requirements.txt      # Python dependencies
+```
 
 ## 📊 Results Summary
 The proposed **Hybrid LSTM-PPO** model was benchmarked against standard PPO and PID controllers over a 1-year simulation cycle.
