@@ -14,3 +14,5 @@ __pycache__/
 # Ignore heavy dataset folders if you don't want them online
 # (Optional: remove the # below if you want to keep models local only)
 # models/
+ns-allinone-3.35.tar.bz2
+ns-allinone-3.35/
