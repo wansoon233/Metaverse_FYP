@@ -1,0 +1,19 @@
+# Ignore virtual environments
+venv/
+.venv/
+
+# Ignore massive simulation binaries
+ns-allinone-3.35/
+ns-allinone-3.35.tar.bz2
+sinergym_source/
+
+# Ignore Git history and caches
+.git/
+__pycache__/
+*.pyc
+
+# Ignore old results (Force the container to generate fresh ones!)
+models/Hybrid/results/
+models/Hybrid/results_kl/
+models/Hybrid/results_saudi/
+models/Hybrid/results_tokyo/
