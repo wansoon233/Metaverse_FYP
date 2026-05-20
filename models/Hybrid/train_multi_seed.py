@@ -65,7 +65,7 @@ def main():
             "MlpLstmPolicy", 
             env, 
             verbose=0, 
-            seed=current_seed, # <--- THIS IS THE MAGIC VARIABLE
+            seed=current_seed, 
             learning_rate=0.0003,
             n_steps=2048,
             batch_size=64

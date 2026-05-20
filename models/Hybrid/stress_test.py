@@ -11,9 +11,10 @@ from sb3_contrib import RecurrentPPO
 # ==========================================
 logging.getLogger('sinergym').setLevel(logging.WARNING)
 ENV_NAME = 'Eplus-5zone-mixed-continuous-v1'
-MODEL_PATH = "saved_models/ppo_lstm_fast" 
-RESULT_DIR = "results"
+KL_WEATHER_PATH = '/home/wansoon/Desktop/FYP_Metaverse/sinergym_source/sinergym/data/weather/KualaLumpur.epw' 
 
+MODEL_PATH = "/home/wansoon/Desktop/FYP_Metaverse/models/Hybrid/saved_models/ppo_lstm.zip" 
+RESULT_DIR = "/home/wansoon/Desktop/FYP_Metaverse/models/Hybrid/results"
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 # ==========================================
@@ -28,7 +29,8 @@ class SmartShieldRBC:
         return 26.0
 
 class PIDShield:
-    def __init__(self, target_temp=24.5, kp=1.5, ki=0.5, kd=0.1): # High Ki to demonstrate windup
+    def __init__(self, target_temp=24.5, kp=1.5, ki=0.5, kd=0.1): 
+        # High Ki explicitly used to demonstrate Integral Windup failure!
         self.target = target_temp
         self.kp = kp
         self.ki = ki
@@ -40,71 +42,79 @@ class PIDShield:
         error = current_temp - self.target
         self.integral += error # THIS is what causes the windup!
         derivative = error - self.last_error
-        
-        pid_adjustment = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
         self.last_error = error
         
-        safe_cooling = 26.0 - pid_adjustment
-        return float(np.clip(safe_cooling, 23.5, 28.0))
+        pid_output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        # Convert PID output to an AC Setpoint
+        cooling_sp = 26.0 - pid_output 
+        return np.clip(cooling_sp, 23.5, 30.0)
 
 # ==========================================
-# 2. THE SIMULATION ENGINE
+# 2. THE STRESS TEST LOOP
 # ==========================================
-def run_stress_test(shield_type, shield_name):
-    print(f"\n🚀 Running Stress Test: {shield_name}")
+def run_stress_test(shield_name, shield_class):
+    print(f"\n⏳ Running Stress Test for: {shield_name}")
     
-    env = gym.make(ENV_NAME)
+    env = gym.make(ENV_NAME, weather_files=KL_WEATHER_PATH)
     try: env.unwrapped.simulator.display_progress = False
     except: pass
     
-    # Load the EXACT SAME AI Brain
-    model = RecurrentPPO.load(MODEL_PATH)
+    obs, _ = env.reset(seed=42)
     
-    shield = shield_type
+    try:
+        model = RecurrentPPO.load(MODEL_PATH)
+    except:
+        print(f"❌ Failed to load {MODEL_PATH}")
+        return
+
+    shield = shield_class()
     lstm_states = None
     episode_starts = np.ones((1,), dtype=bool)
-    obs, _ = env.reset()
     logs = []
-    HEAT_FIXED = 23.25
     
-    # Run for 150 steps (~37 hours)
-    for step in range(150):
+    # 3000 steps is about 1 month. Perfect for a zoomed-in Excel graph.
+    TEST_STEPS = 3000 
+    
+    for step in range(TEST_STEPS):
         true_temp = obs[9]
         
-        # 🚨 INJECT ANOMALY: Between steps 50 and 60, simulate a massive heatwave!
-        if 50 <= step <= 60:
-            perceived_temp = 32.0 
-            anomaly = "HEATWAVE"
-        else:
-            perceived_temp = true_temp
-            anomaly = "NORMAL"
+        # --- THE ANOMALY INJECTION ---
+        # Introduce a sudden +4.0°C fake sensor reading between step 1000 and 1500
+        anomaly = 0.0
+        if 1000 <= step <= 1500:
+            anomaly = 4.0 
             
-        # 1. SHIELD LOGIC
+        perceived_temp = true_temp + anomaly
+        integral_val = getattr(shield, 'integral', 0.0)
+        
+        # --- HYBRID LOGIC ---
+        # The shield triggers based on what the SENSOR reads (perceived_temp)
         if perceived_temp < 23.2 or perceived_temp > 25.8:
             safe_cooling = shield.get_safety_action(perceived_temp)
-            action_vals = np.array([HEAT_FIXED, safe_cooling], dtype=np.float32)
-            mode = "SHIELD_ACTIVE"
+            action_vals = np.array([23.25, safe_cooling], dtype=np.float32)
+            mode = "SHIELD"
+            
+            # Keep AI memory synced
             _, lstm_states = model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
-            
-            # Grab integral if it's the PID for our thesis data
-            integral_val = getattr(shield, 'integral', 0.0) 
-            
-        # 2. AI LOGIC
+            integral_val = getattr(shield, 'integral', 0.0)
         else:
             action, lstm_states = model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
-            val = np.clip(action[0], -1.0, 1.0)
-            ppo_cooling = 23.5 + (0.5 * (val + 1.0) * (28.0 - 23.5))
-            action_vals = np.array([HEAT_FIXED, ppo_cooling], dtype=np.float32)
-            mode = "LSTM_AI"
             
-            # If PID is quiet, we should still decay its integral to be fair, but we'll leave it 0 for this demo
-            integral_val = getattr(shield, 'integral', 0.0)
+            val_heat = np.clip(action[0], -1.0, 1.0)
+            val_cool = np.clip(action[1], -1.0, 1.0)
+            
+            # 2D Sinergym-Safe Decoding
+            heating_setpoint = 12.0 + (0.5 * (val_heat + 1.0) * (23.25 - 12.0))
+            cooling_setpoint = 23.5 + (0.5 * (val_cool + 1.0) * (30.0 - 23.5))
+            
+            action_vals = np.array([heating_setpoint, cooling_setpoint], dtype=np.float32)
+            mode = "AI"
 
         # Apply action to the actual room
         obs, _, terminated, truncated, info = env.step(action_vals)
         episode_starts = terminated or truncated
         
-        # Log the data for your Excel Graph
+        # Log data for Excel
         logs.append([
             step, 
             round(true_temp, 2), 
@@ -129,13 +139,14 @@ def run_stress_test(shield_type, shield_name):
 # ==========================================
 if __name__ == "__main__":
     print("="*60)
-    print("🧪 INITIALIZING THESIS ABLATION & STRESS TEST")
+    print("🧪 INITIALIZING THESIS SENSOR FAULT STRESS TEST")
     print("="*60)
     
     # Run Test 1: The RBC (SmartShield)
-    run_stress_test(SmartShieldRBC(), "RBC_Shield")
+    run_stress_test("RBC", SmartShieldRBC)
     
-    # Run Test 2: The PID
-    run_stress_test(PIDShield(), "PID_Shield")
+    # Run Test 2: The PID (The Flawed Baseline)
+    run_stress_test("PID", PIDShield)
     
-    print("\n🎉 STRESS TESTS COMPLETE. You can now plot the CSV files in Excel!")
+    print("="*60)
+    print("🎉 STRESS TESTS COMPLETE. OPEN CSVs IN EXCEL TO PLOT!")

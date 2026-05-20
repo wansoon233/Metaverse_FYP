@@ -7,9 +7,11 @@ import os
 # ==========================================
 # 1. LOAD DATA
 # ==========================================
-# Make sure these match the files in your results folder!
-df_base = pd.read_csv("results/baseline_evaluations.csv")
-df_hybrid = pd.read_csv("results/hybrid_multi_seed_results.csv")
+# -> UPDATED PATHS TO POINT TO THE NEW KL RESULTS FOLDER <-
+BASE_DIR = "/home/wansoon/Desktop/FYP_Metaverse/models/Hybrid/results"
+
+df_base = pd.read_csv(os.path.join(BASE_DIR, "baseline_evaluations.csv"))
+df_hybrid = pd.read_csv(os.path.join(BASE_DIR, "hybrid_multi_seed_results.csv"))
 
 # Combine all data into one DataFrame
 df = pd.concat([df_base, df_hybrid], ignore_index=True)
@@ -63,11 +65,11 @@ plt.ylabel("Total Energy Consumption (kWh) (Lower is Better)", fontsize=12, font
 plt.gca().invert_xaxis()
 
 plt.grid(True, linestyle='--', alpha=0.7)
-plt.legend(title="Controller Type", title_fontsize='11', fontsize='10', loc='upper left')
+plt.legend(title="Controller Type", fontsize=10, title_fontsize=12)
 
-# Save the final image
-output_file = "results/pareto_frontier.png"
-plt.savefig(output_file, dpi=300, bbox_inches='tight')
-print("="*60)
-print(f"📈 GRAPH SAVED SUCCESSFULLY TO: {output_file}")
-print("="*60)
+# Save the graph
+graph_path = os.path.join(BASE_DIR, "pareto_frontier.png")
+plt.savefig(graph_path, dpi=300, bbox_inches='tight')
+print(f"\n✅ Graph saved to: {graph_path}")
+
+plt.show()

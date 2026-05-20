@@ -3,109 +3,94 @@ import numpy as np
 import sinergym
 import logging
 import os  
+import torch 
+import mlflow
+import mlflow.pytorch
 from sb3_contrib import RecurrentPPO 
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
 # ==========================================
-# 0. CONFIG & PATHS
+# 0. CONFIG 
 # ==========================================
 logging.getLogger('sinergym').setLevel(logging.WARNING)
 ENV_NAME = 'Eplus-5zone-mixed-continuous-v1'
+KL_WEATHER_PATH = '/home/wansoon/Desktop/FYP_Metaverse/sinergym_source/sinergym/data/weather/KualaLumpur.epw' 
 
-TIMESTEPS_TRAIN = 80000 
-
-# --- SAVE PATH CONFIGURATION ---
-# This ensures the folder exists so you don't get an error
+TIMESTEPS_TRAIN = 300000 
 SAVE_DIR = "models/Hybrid/saved_models"
-MODEL_NAME = "ppo_lstm_fast"
+MODEL_NAME = "ppo_lstm"
 os.makedirs(SAVE_DIR, exist_ok=True) 
 
+mlflow.set_experiment("Hybrid-LSTM-PPO")
+
 # ==========================================
-# 1. PHYSICS WRAPPER
+# 1. THE 2D WRAPPER (KL & Sinergym Safe)
 # ==========================================
-class LSTMWrapper(gym.Wrapper):
+class EliteWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         
-        self.HEAT_FIXED = 23.25      
-        self.COOL_MIN = 23.5          
-        self.COOL_MAX = 28.0          
+        # Hard limits enforced by Sinergym physics
+        self.HEAT_MIN, self.HEAT_MAX = 12.0, 23.25 
+        self.COOL_MIN, self.COOL_MAX = 23.5, 30.0          
 
     def step(self, action):
-        val = np.clip(action[0], -1.0, 1.0)
-        cooling_setpoint = self.COOL_MIN + (0.5 * (val + 1.0) * (self.COOL_MAX - self.COOL_MIN))
+        val_heat = np.clip(action[0], -1.0, 1.0)
+        val_cool = np.clip(action[1], -1.0, 1.0)
         
-        dual_action = np.array([self.HEAT_FIXED, cooling_setpoint], dtype=np.float32)
+        h_set = self.HEAT_MIN + (0.5 * (val_heat + 1.0) * (self.HEAT_MAX - self.HEAT_MIN))
+        c_set = self.COOL_MIN + (0.5 * (val_cool + 1.0) * (self.COOL_MAX - self.COOL_MIN))
+        
+        dual_action = np.array([h_set, c_set], dtype=np.float32)
         obs, _, terminated, truncated, info = self.env.step(dual_action)
         
-        temp_c = obs[9]        
-        energy_power = obs[15] 
+        temp = obs[9]        
+        power = obs[15] 
 
-        # Reward Function
-        if 23.0 <= temp_c <= 26.0:
-            dist = abs(temp_c - 24.5)
-            score = 2.0 + (1.0 - dist)
-        else:
-            diff = min(abs(23.0 - temp_c), abs(temp_c - 26.0))
-            score = -(diff * 5.0)
+        # Smooth, precision-focused reward curve
+        comfort_reward = 10.0 * np.exp(-0.5 * ((temp - 24.5) / 1.0) ** 2) 
+        energy_penalty = (power / 10000.0) * 0.5 
 
-        energy_score = -1.0 * (energy_power / 10000.0)
+        reward = comfort_reward - energy_penalty
         
-        return obs, (score + energy_score), terminated, truncated, info
+        return obs, reward, terminated, truncated, info
 
 # ==========================================
-# 2. LOGGER
+# 2. CALLBACKS & MAIN
 # ==========================================
-class CleanLogger(BaseCallback):
+class ProgressLogger(BaseCallback):
     def _on_step(self) -> bool:
-        if self.n_calls % 5000 == 0:
-            pct = (self.n_calls / TIMESTEPS_TRAIN) * 100
-            print(f"   [Training] Step {self.n_calls}/{TIMESTEPS_TRAIN} ({pct:.0f}%)")
+        if self.n_calls % 10000 == 0:
+            print(f"🚀 Step {self.n_calls}/{TIMESTEPS_TRAIN}...")
         return True
 
-# ==========================================
-# 3. MAIN TRAINING LOOP
-# ==========================================
 def main():
     print("="*60)
-    print("🚀 TRAINING LSTM HYBRID BRAIN")
+    print("🚀 TRAINING KL-SPECIALIST BRAIN")
     print("="*60)
     
-    env = gym.make(ENV_NAME)
-    try: env.unwrapped.simulator.display_progress = False
-    except: pass
-    
-    env = LSTMWrapper(env)
-    env = Monitor(env)
+    with mlflow.start_run(run_name="Hybrid_KL_Training"):
+        env = Monitor(EliteWrapper(gym.make(ENV_NAME, weather_files=KL_WEATHER_PATH)))
 
-    print(f"🔹 Initializing RecurrentPPO (LSTM)...")
-    model = RecurrentPPO(
-        "MlpLstmPolicy", 
-        env, 
-        verbose=0, 
-        learning_rate=0.0003,
-        n_steps=2048,
-        batch_size=64,
-        ent_coef=0.01
-    )
+        model = RecurrentPPO(
+            "MlpLstmPolicy", 
+            env, 
+            learning_rate=0.0003,
+            n_steps=2048,
+            batch_size=64, 
+            ent_coef=0.01, 
+            verbose=0
+        )
 
-    print(f"🔹 Starting Training for {TIMESTEPS_TRAIN} steps...")
-    callback = CleanLogger()
-    model.learn(total_timesteps=TIMESTEPS_TRAIN, callback=callback)
-    
-    # --- UPDATED SAVE COMMAND ---
-    # Combines the folder path and file name
-    save_path = os.path.join(SAVE_DIR, MODEL_NAME)
-    model.save(save_path)
-    
-    print("="*60)
-    print("✅ TRAINING COMPLETE.")
-    print(f"   Saved to: {save_path}.zip")
-    print("   NOW you can run the testing script.")
-    print("="*60)
-    env.close()
+        model.learn(total_timesteps=TIMESTEPS_TRAIN, callback=ProgressLogger())
+        
+        model.save(os.path.join(SAVE_DIR, MODEL_NAME))
+        torch.save(model.policy.state_dict(), os.path.join(SAVE_DIR, 'lstm_weights.pth'))
+        
+        print("✅ KL TRAINING COMPLETE.")
+        env.close()
 
 if __name__ == "__main__":
     main()
