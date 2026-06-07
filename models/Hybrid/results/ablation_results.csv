@@ -1,0 +1,6 @@
+Configuration,Energy (kWh),Violations
+Pure RBC,26589.533,3361
+Standard PPO,32697.637,5
+PPO + Shield,32697.637,5
+LSTM-PPO,33066.996,5
+Full Hybrid,33066.996,5
