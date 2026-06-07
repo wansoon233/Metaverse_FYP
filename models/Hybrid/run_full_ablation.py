@@ -99,3 +99,17 @@ print("-" * 70)
 for r in results:
     print(f"{r[0]:<15} | {r[1]:<12.1f} | {r[2]}")
 print("="*70)
+
+# ==========================================
+# SAVE TO CSV
+# ==========================================
+csv_path = "/home/wansoon/Desktop/FYP_Metaverse/models/Hybrid/results/ablation_results.csv"
+
+# Convert the results list into a Pandas DataFrame and save it
+df = pd.DataFrame(results, columns=["Configuration", "Energy (kWh)", "Violations"])
+
+# Create the results directory if it doesn't exist yet
+os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+
+df.to_csv(csv_path, index=False)
+print(f"\n✅ Results successfully saved to: {csv_path}")
