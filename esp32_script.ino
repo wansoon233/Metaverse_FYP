@@ -3,7 +3,7 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 #include "Adafruit_SHT31.h"
-#include <esp_task_wdt.h> // The Watchdog Library
+#include <esp_task_wdt.h> 
 
 // ==========================================
 // 1. SETTINGS & MQTT TOPICS
