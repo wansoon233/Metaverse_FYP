@@ -79,13 +79,13 @@ void setup() {
   Wire.begin();
   Wire.setTimeOut(150); 
   if (!sht_indoor.begin(0x44)) {
-    Serial.println("⚠️ Indoor SHT31 not found!");
+    Serial.println("⚠️ Indoor sensor not found!");
   }
 
   Wire1.begin(SDA_2, SCL_2); 
   Wire1.setTimeOut(150);
   if (!sht_outdoor.begin(0x44)) {
-    Serial.println("⚠️ Outdoor SHT31 not found!");
+    Serial.println("⚠️ Outdoor sensor not found!");
   }
 
   // WiFi Setup
